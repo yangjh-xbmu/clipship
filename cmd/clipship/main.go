@@ -6,12 +6,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/yangjh-xbmu/clipship/internal/client"
 	"github.com/yangjh-xbmu/clipship/internal/clipboard"
 	"github.com/yangjh-xbmu/clipship/internal/config"
+	"github.com/yangjh-xbmu/clipship/internal/server"
 	"github.com/yangjh-xbmu/clipship/internal/transfer"
 )
 
-const version = "0.1.0"
+const version = "0.2.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -22,6 +24,10 @@ func main() {
 	switch os.Args[1] {
 	case "send":
 		err = runSend(os.Args[2:])
+	case "pull":
+		err = runPull()
+	case "daemon":
+		err = runDaemon()
 	case "init":
 		err = runInit()
 	case "doctor":
@@ -41,12 +47,19 @@ func main() {
 }
 
 func usage() {
-	fmt.Println(`clipship — paste clipboard images to a remote host over SSH
+	fmt.Println(`clipship — move clipboard images between local and SSH-connected hosts
 
 Usage:
-  clipship send [host]     send clipboard PNG to [host] (or default_host)
+  clipship daemon          serve clipboard PNG on a local TCP socket
+                           (run on the machine holding the clipboard, e.g. your desktop)
+
+  clipship pull            fetch PNG from a daemon (via ssh -R tunnel) into local_dir
+                           (run on the remote dev machine, e.g. in your SSH session)
+
+  clipship send [host]     upload clipboard PNG to [host] via SFTP
+
   clipship init            write a sample config file
-  clipship doctor [host]   run end-to-end health checks
+  clipship doctor [host]   run SFTP health checks for the send workflow
   clipship version         print version
 
 Config:
@@ -155,6 +168,23 @@ func runDoctor(args []string) error {
 	} else {
 		fmt.Println("clipboard image: ok")
 	}
+	return nil
+}
+
+func runDaemon() error {
+	cfg := config.LoadOrEmpty()
+	d := config.ResolveDaemon(cfg)
+	return server.Run(d.Listen)
+}
+
+func runPull() error {
+	cfg := config.LoadOrEmpty()
+	p := config.ResolvePull(cfg)
+	path, err := client.Pull(p.Connect, p.LocalDir, p.Filename)
+	if err != nil {
+		return err
+	}
+	fmt.Println(path)
 	return nil
 }
 
