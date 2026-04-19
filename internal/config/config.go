@@ -19,13 +19,16 @@ type Host struct {
 }
 
 type Daemon struct {
-	Listen string `toml:"listen"`
+	Listen   string `toml:"listen"`
+	MaxBytes int64  `toml:"max_bytes"`
 }
 
 type Pull struct {
 	Connect  string `toml:"connect"`
 	LocalDir string `toml:"local_dir"`
 	Filename string `toml:"filename"`
+	FilesDir string `toml:"files_dir"`
+	MaxBytes int64  `toml:"max_bytes"`
 }
 
 type Config struct {
@@ -39,6 +42,8 @@ const (
 	DefaultAddr     = "127.0.0.1:19983"
 	DefaultLocalDir = "~/.clipship/inbox"
 	DefaultFilename = "clip_{ts}.png"
+	DefaultFilesDir = "~/.clipship/inbox/files"
+	DefaultMaxBytes = int64(500 * 1024 * 1024) // 500 MB
 )
 
 func Path() (string, error) {
@@ -103,6 +108,9 @@ func ResolveDaemon(c *Config) Daemon {
 	if d.Listen == "" {
 		d.Listen = DefaultAddr
 	}
+	if d.MaxBytes == 0 {
+		d.MaxBytes = DefaultMaxBytes
+	}
 	return d
 }
 
@@ -116,6 +124,12 @@ func ResolvePull(c *Config) Pull {
 	}
 	if p.Filename == "" {
 		p.Filename = DefaultFilename
+	}
+	if p.FilesDir == "" {
+		p.FilesDir = DefaultFilesDir
+	}
+	if p.MaxBytes == 0 {
+		p.MaxBytes = DefaultMaxBytes
 	}
 	return p
 }
@@ -135,16 +149,18 @@ const sample = `# clipship config
 # filename   = "clip_{ts}.png"
 
 # --- daemon: run on the LOCAL desktop machine (the one with the clipboard) --
-# Serves PNG from the OS clipboard over a localhost TCP socket.
+# Serves PNG + file clipboard over a localhost TCP socket.
 # Expose it to your remote dev host via ssh -R / RemoteForward.
 [daemon]
-listen = "127.0.0.1:19983"
+listen    = "127.0.0.1:19983"
+# max_bytes = 524288000      # 500 MB hard ceiling for file pulls
 
 # --- pull: run on the REMOTE dev machine (the one where Claude Code runs) --
-# Connects to the tunneled port and saves clipboard PNG locally.
 [pull]
 connect   = "127.0.0.1:19983"
-local_dir = "~/.clipship/inbox"
+local_dir = "~/.clipship/inbox"                    # PNG output dir
+files_dir = "~/.clipship/inbox/files"              # per-session file output dir
+max_bytes = 524288000                              # soft limit; bypass with --force
 filename  = "clip_{ts}.png"
 `
 
