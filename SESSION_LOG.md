@@ -1,6 +1,8 @@
 # SESSION LOG
 
 ## 完成
+- 2026-04-19 v0.4.0 打 tag 并 push，GitHub Actions 已有 goreleaser 流水线自动生成 darwin_amd64/arm64 + windows_amd64 归档与 checksums 的正式 release；用 gh release edit --notes 把自动说明改写为 v0.4 功能亮点版
+- 2026-04-19 把全局 ~/.claude/skills/clip/SKILL.md 同步升级到 v0.4：主命令改 pull-auto、stdout 走 JSON + jq 分支、新增 file kind 分支与失败表（clipboard has no files / too large 等）
 - 2026-04-19 调研 Superpowers 工作流并评估 clipship 支持任意文件剪贴板的可行性（约 2-3 天工作量，无结构性难点）
 - 2026-04-19 将 obra/superpowers 的 14 个 skills vendor 到 clipship 项目级 .claude/skills/，并在 .gitignore 排除
 - 2026-04-19 对 clipship 仓库做敏感信息脱敏：用 git filter-repo 将 README/config 示例中的真实 Tailscale 机器名、用户名、SSH key 路径替换为占位符，工作区 + 4 个历史提交全部重写，force push 覆盖远端
@@ -12,6 +14,8 @@
 - 2026-04-19 里程碑 3（Task 15-16）落地：README 按三工作流重写 + /clip skill 改用 pull-auto + 迁移指南；版本 0.4.0 验证、go vet 干净、darwin/arm64 + windows/amd64 全部 build+test -race 通过
 
 ## 发现
+- 2026-04-19 仓库里挂着 tag-triggered goreleaser 类 CI 时，手动 gh release create 会与之抢同名 tag 报 HTTP 422（Release.tag_name already exists）；正确做法是 git push tag 让 CI 建 release，再用 gh release edit --notes 改描述，assets 由 CI 负责
+- 2026-04-19 全局 ~/.claude/skills/<name>/SKILL.md 与项目 README 中描述的 skill spec 是两份独立副本，没有自动同步机制；协议/命令升级时必须手动改两处，否则用户实际装的 skill 与 README 描述会漂移
 - 2026-04-19 obra/superpowers 的 slash commands（/brainstorm、/write-plan、/execute-plan）已全部 deprecated，只是壳提示用户改调同名 skill；真正入口是 skills 目录
 - 2026-04-19 superpowers 的 hooks 依赖 $CLAUDE_PLUGIN_ROOT 环境变量，手动 vendor 到非 plugin 目录会失效，只能通过 /plugin install 正式安装才生效
 - 2026-04-19 Claude Code 的可用 skill 列表在 session 启动时固化到 system prompt，中途往项目级 .claude/skills/ 里新加的 skill 当前 session 不可见，必须 /clear 或新开 session 才能被 Skill 工具发现
@@ -24,4 +28,4 @@
 - 2026-04-19 tar 解包时先 `filepath.Rel` 再检查是否逃出 destDir 是比 strings.HasPrefix 更可靠的 path traversal 防护
 
 ## 待办
-（空）
+无
