@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -13,7 +14,7 @@ import (
 	"github.com/yangjh-xbmu/clipship/internal/transfer"
 )
 
-const version = "0.3.0"
+const version = "0.4.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -26,6 +27,10 @@ func main() {
 		err = runSend(os.Args[2:])
 	case "pull":
 		err = runPull()
+	case "pull-file":
+		err = runPullFile(os.Args[2:])
+	case "pull-auto":
+		err = runPullAuto(os.Args[2:])
 	case "daemon":
 		err = runDaemon()
 	case "dump-png":
@@ -49,21 +54,20 @@ func main() {
 }
 
 func usage() {
-	fmt.Println(`clipship — move clipboard images between local and SSH-connected hosts
+	fmt.Println(`clipship — move clipboard content between local and SSH-connected hosts
 
 Usage:
-  clipship dump-png        write the current clipboard PNG to stdout (one-shot)
-                           (run on the desktop machine; typical caller:
-                             ssh <workstation> clipship dump-png > file.png)
+  clipship daemon               serve PNG / files on a local TCP socket (persistent)
+  clipship pull                 fetch PNG from a daemon; stdout=JSON
+  clipship pull-file [--force]  fetch files from a daemon; stdout=JSON
+  clipship pull-auto [--force]  fetch whatever is on the clipboard; stdout=JSON
 
-  clipship daemon          serve clipboard PNG on a local TCP socket (persistent)
-  clipship pull            fetch PNG from a daemon (via ssh -R tunnel) into local_dir
+  clipship send [host]          upload clipboard PNG to [host] via SFTP
+  clipship dump-png             write current clipboard PNG to stdout (one-shot)
 
-  clipship send [host]     upload clipboard PNG to [host] via SFTP
-
-  clipship init            write a sample config file
-  clipship doctor [host]   run SFTP health checks for the send workflow
-  clipship version         print version
+  clipship init                 write a sample config file
+  clipship doctor [host]        run SFTP health checks for the send workflow
+  clipship version              print version
 
 Config:
   ` + mustConfigPath())
@@ -186,18 +190,78 @@ func runDumpPNG() error {
 func runDaemon() error {
 	cfg := config.LoadOrEmpty()
 	d := config.ResolveDaemon(cfg)
-	return server.Run(d.Listen)
+	return server.Run(d.Listen, server.Options{MaxBytes: d.MaxBytes})
+}
+
+type pngJSON struct {
+	Kind  string `json:"kind"`
+	Path  string `json:"path"`
+	Bytes int64  `json:"bytes"`
+}
+
+type fileJSON struct {
+	Kind       string   `json:"kind"`
+	SessionDir string   `json:"session_dir"`
+	Files      []string `json:"files"`
+	Bytes      int64    `json:"bytes"`
 }
 
 func runPull() error {
 	cfg := config.LoadOrEmpty()
 	p := config.ResolvePull(cfg)
-	path, err := client.Pull(p.Connect, p.LocalDir, p.Filename)
+	path, n, err := client.PullPNG(p.Connect, p.LocalDir, p.Filename)
 	if err != nil {
 		return err
 	}
-	fmt.Println(path)
-	return nil
+	return writeJSON(pngJSON{Kind: "png", Path: path, Bytes: n})
+}
+
+func runPullFile(args []string) error {
+	force := parseForce(args)
+	cfg := config.LoadOrEmpty()
+	p := config.ResolvePull(cfg)
+	res, err := client.PullFile(p.Connect, p.FilesDir, force)
+	if err != nil {
+		return err
+	}
+	return writeJSON(fileJSON{Kind: "file", SessionDir: res.SessionDir, Files: res.Files, Bytes: res.Bytes})
+}
+
+func runPullAuto(args []string) error {
+	force := parseForce(args)
+	cfg := config.LoadOrEmpty()
+	p := config.ResolvePull(cfg)
+	res, err := client.PullAuto(p.Connect, p.LocalDir, p.Filename, p.FilesDir, force)
+	if err != nil {
+		return err
+	}
+	switch res.Kind {
+	case "png":
+		return writeJSON(pngJSON{Kind: "png", Path: res.PNG.Path, Bytes: res.PNG.Bytes})
+	case "file":
+		return writeJSON(fileJSON{Kind: "file", SessionDir: res.File.SessionDir, Files: res.File.Files, Bytes: res.File.Bytes})
+	default:
+		return fmt.Errorf("unexpected auto kind %q", res.Kind)
+	}
+}
+
+func parseForce(args []string) bool {
+	for _, a := range args {
+		if a == "--force" || a == "-f" {
+			return true
+		}
+	}
+	return false
+}
+
+func writeJSON(v any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Errorf("marshal json: %w", err)
+	}
+	b = append(b, '\n')
+	_, err = os.Stdout.Write(b)
+	return err
 }
 
 func renderFilename(tmpl, host string) string {
