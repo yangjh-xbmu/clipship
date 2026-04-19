@@ -1,0 +1,6 @@
+/clipship
+/clipship.exe
+/dist/
+*.test
+*.out
+.DS_Store
