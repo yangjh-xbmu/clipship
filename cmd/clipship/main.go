@@ -13,7 +13,7 @@ import (
 	"github.com/yangjh-xbmu/clipship/internal/transfer"
 )
 
-const version = "0.2.0"
+const version = "0.3.0"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -28,6 +28,8 @@ func main() {
 		err = runPull()
 	case "daemon":
 		err = runDaemon()
+	case "dump-png":
+		err = runDumpPNG()
 	case "init":
 		err = runInit()
 	case "doctor":
@@ -50,11 +52,12 @@ func usage() {
 	fmt.Println(`clipship — move clipboard images between local and SSH-connected hosts
 
 Usage:
-  clipship daemon          serve clipboard PNG on a local TCP socket
-                           (run on the machine holding the clipboard, e.g. your desktop)
+  clipship dump-png        write the current clipboard PNG to stdout (one-shot)
+                           (run on the desktop machine; typical caller:
+                             ssh <workstation> clipship dump-png > file.png)
 
+  clipship daemon          serve clipboard PNG on a local TCP socket (persistent)
   clipship pull            fetch PNG from a daemon (via ssh -R tunnel) into local_dir
-                           (run on the remote dev machine, e.g. in your SSH session)
 
   clipship send [host]     upload clipboard PNG to [host] via SFTP
 
@@ -169,6 +172,15 @@ func runDoctor(args []string) error {
 		fmt.Println("clipboard image: ok")
 	}
 	return nil
+}
+
+func runDumpPNG() error {
+	img, err := clipboard.ReadPNG()
+	if err != nil {
+		return err
+	}
+	_, err = os.Stdout.Write(img)
+	return err
 }
 
 func runDaemon() error {
