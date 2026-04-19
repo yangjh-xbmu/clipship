@@ -18,10 +18,28 @@ type Host struct {
 	Identity  string `toml:"identity"`
 }
 
+type Daemon struct {
+	Listen string `toml:"listen"`
+}
+
+type Pull struct {
+	Connect  string `toml:"connect"`
+	LocalDir string `toml:"local_dir"`
+	Filename string `toml:"filename"`
+}
+
 type Config struct {
 	DefaultHost string          `toml:"default_host"`
 	Hosts       map[string]Host `toml:"hosts"`
+	Daemon      Daemon          `toml:"daemon"`
+	Pull        Pull            `toml:"pull"`
 }
+
+const (
+	DefaultAddr     = "127.0.0.1:19983"
+	DefaultLocalDir = "~/.clipship/inbox"
+	DefaultFilename = "clip_{ts}.png"
+)
 
 func Path() (string, error) {
 	dir, err := os.UserConfigDir()
@@ -47,6 +65,16 @@ func Load() (*Config, string, error) {
 	return &c, p, nil
 }
 
+// LoadOrEmpty returns a zero Config if the file is missing, so daemon/pull can
+// run on defaults without requiring `clipship init` first.
+func LoadOrEmpty() *Config {
+	c, _, err := Load()
+	if err != nil || c == nil {
+		return &Config{}
+	}
+	return c
+}
+
 func Resolve(c *Config, name string) (string, Host, error) {
 	if name == "" {
 		name = c.DefaultHost
@@ -62,7 +90,7 @@ func Resolve(c *Config, name string) (string, Host, error) {
 		return name, h, fmt.Errorf("host %q: remote_dir is required", name)
 	}
 	if h.Filename == "" {
-		h.Filename = "clip_{ts}.png"
+		h.Filename = DefaultFilename
 	}
 	if h.Port == 0 {
 		h.Port = 22
@@ -70,16 +98,54 @@ func Resolve(c *Config, name string) (string, Host, error) {
 	return name, h, nil
 }
 
-const sample = `# clipship config
-default_host = "example"
+func ResolveDaemon(c *Config) Daemon {
+	d := c.Daemon
+	if d.Listen == "" {
+		d.Listen = DefaultAddr
+	}
+	return d
+}
 
-[hosts.example]
-addr      = "example.local"     # hostname or IP
-user      = "you"                # SSH user
-port      = 22
-identity  = "~/.ssh/your_ssh_key"  # private key path
-remote_dir = "/tmp/clipship"     # where PNGs land
-filename   = "clip_{ts}.png"     # {ts} = yyyyMMdd_HHmmss
+func ResolvePull(c *Config) Pull {
+	p := c.Pull
+	if p.Connect == "" {
+		p.Connect = DefaultAddr
+	}
+	if p.LocalDir == "" {
+		p.LocalDir = DefaultLocalDir
+	}
+	if p.Filename == "" {
+		p.Filename = DefaultFilename
+	}
+	return p
+}
+
+const sample = `# clipship config
+# Pick the blocks you need — nothing is required if you accept defaults.
+
+# --- send: upload clipboard PNG to a remote host via SFTP -------------------
+# default_host = "example"
+#
+# [hosts.example]
+# addr      = "example.local"
+# user      = "you"
+# port      = 22
+# identity  = "~/.ssh/your_ssh_key"
+# remote_dir = "/tmp/clipship"
+# filename   = "clip_{ts}.png"
+
+# --- daemon: run on the LOCAL desktop machine (the one with the clipboard) --
+# Serves PNG from the OS clipboard over a localhost TCP socket.
+# Expose it to your remote dev host via ssh -R / RemoteForward.
+[daemon]
+listen = "127.0.0.1:19983"
+
+# --- pull: run on the REMOTE dev machine (the one where Claude Code runs) --
+# Connects to the tunneled port and saves clipboard PNG locally.
+[pull]
+connect   = "127.0.0.1:19983"
+local_dir = "~/.clipship/inbox"
+filename  = "clip_{ts}.png"
 `
 
 func WriteSample() (string, bool, error) {
